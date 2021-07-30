@@ -1,0 +1,11 @@
+##
+## Arch Linux repository mirrorlist
+## Generated on 2021-07-28 using https://archlinux.org/mirrorlist/
+##
+
+## Australia
+Server = https://mirror.aarnet.edu.au/pub/archlinux/$repo/os/$arch
+Server = https://archlinux.mirror.digitalpacific.com.au/$repo/os/$arch
+Server = https://mirror.launtel.net.au/repo/arch/$repo/os/$arch
+Server = https://arch.lucassymons.net/$repo/os/$arch
+Server = https://syd.mirror.rackspace.com/archlinux/$repo/os/$arch
