@@ -332,11 +332,11 @@ Add custom data (cloud-init config) during VM creation to test cloud-init; examp
 
 # Share Azure Image
 
-If the VM boots successfully create a new Image Definition in a Shared Image Gallery to replicated it to any other regions you want to deploy from.
+If the VM boots successfully create a new Image Definition in a Shared Image Gallery to replicated it to any other region you want to deploy from.
 
 # Known issues
 
-1. cloud-init does not create swapfile
+1. Cloud-init does not create swapfile
 
 https://bugs.launchpad.net/cloud-init/+bug/1869114
 
