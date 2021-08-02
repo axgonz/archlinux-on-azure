@@ -1,0 +1,7 @@
+#cloud-config
+mounts:
+    - ["ephemeral0.1", "/mnt/resource"]
+swap:
+    filename: "/mnt/resource/swapfile"
+    size: "auto"
+    maxsize: 4294967296

@@ -2,7 +2,7 @@
 
 In the words of Adam Savage this will be a document of "what happened" and not a guide for "how to".
 
-> Note: the `archlinux-2021.07.01-x86_64` release was used.
+> Note: The `archlinux-2021.07.01-x86_64` release was used.
 
 ## Goals
 
@@ -26,7 +26,7 @@ To test our theory we will need to first convert the installation media itself i
 
 ## Convert installation ISO to VHD
 
-Setup a working directory
+Setup a working directory.
 
 ```
 mkdir ~/arch-image && cd ~/arch-image
@@ -44,7 +44,7 @@ Create `convert-to-vhd.sh` script (get the script from [src/convert-to-vhd.sh](s
 touch ./convert-to-vhd.sh && chmod +x ./convert-to-vhd.sh
 ```
 
-Download the installation media
+Download the installation media.
 
 ``` 
 wget https://syd.mirror.rackspace.com/archlinux/iso/2021.07.01/archlinux-2021.07.01-x86_64.iso
@@ -82,7 +82,7 @@ Create a new VM resource (which we will now call the iso VM) from the Image.
 <use the azure portal>
 ```
 
-> Note: while creating the VM add an additional data disk which we will use to install arch onto.
+> Note: While creating the VM add an additional data disk which we will use to install arch onto.
 
 ## Does it work?
 
@@ -94,11 +94,17 @@ Use bastion to SSH to the iso VM to establish if we can proceed to installation.
 
 After successfully booting an Azure VM from the installation media in we can follow the arch [installation guide](https://wiki.archlinux.org/title/Installation_guide) to configure the previously attached blank disk. 
 
+Start by impersonating root as the installation media expects.
+
+```
+sudo su
+```
+
 > Note: ICMP ping won't always work in Azure so don't be alarmed by this.
 
 ## Swap
 
-Don't create a swap partition waagent will do that for us later.
+Don't create a swap partition cloud-init will do that for us later.
 
 ## Mirrors
 
@@ -108,7 +114,7 @@ The mirrors used are in [src/mirrorlist](src/mirrorlist). Your own list can be g
 Follow the official installation guide until the `pacstrap` command, then run the following instead.
 
 ```
-pacstrap /mnt base linux grub util-linux dhcpcd openssh sudo cloud-init cloud-guest-utils inetutils git base-devel nano
+pacstrap /mnt base linux grub dhcpcd openssh sudo cloud-init cloud-guest-utils inetutils git base-devel nano
 ```
 
 Description of packages.
@@ -118,7 +124,6 @@ Name | Usage
 base                | The base arch package from the installation guide.
 linux               | The linux kernel.
 grub                | A bootloader with good documentation for Azure.
-util-linux          | (not sure if this is essential) adds getty support for serial console.
 dhcpcd              | DHCP client required for obtaining interface configuration (and more) from Azure.
 sudo                | Azure expects that this will be installed.
 cloud-init          | Used to provision our VM.
@@ -149,13 +154,13 @@ nano /etc/default/grub
 ```
 
 ```
-GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 console=ttyS0,115200
+GRUB_CMDLINE_LINUX_DEFAULT="loglevel=3 console=ttyS0,9600
 
 GRUB_TERMINAL_INPUT=serial 
 
 GRUB_TERMINAL_OUTPUT=serial 
 
-GRUB_SERIAL_COMMAND="serial --speed=115200 --unit=0 --word=8 --parity=no --stop=1"
+GRUB_SERIAL_COMMAND="serial --speed=9600 --unit=0 --word=8 --parity=no --stop=1"
 ```
 
 Generate the configuration file.
@@ -228,18 +233,6 @@ nano /etc/waagent.conf
 
 ```
 Provisioning.Agent=cloud-init
-
-Provisioning.DeleteRootPassword=y
-
-ResourceDisk.EnableSwap=y
-
-ResourceDisk.SwapSizeMB=2048
-```
-
-Create the default directory for the resource disk to mount to.
-
-```
-mkdir /mnt/resource
 ```
 
 **Check fstab**
@@ -259,7 +252,7 @@ nano /etc/fstab
 
 We need to tell the kernel to output to serial and we need to tell grub to output to serial. The kernel supports a parameter to do this called `console=` meaning we can use `/etc/default/grub` to setup both. See above for the grub configuration.
 
-> Note: Azure serial console expects device ttyS0 and a baud rate of 115200.
+> Note: Azure serial console expects device ttyS0 and a baud rate of 115200 or 9600.
 
 **Enable services**
 
@@ -289,9 +282,15 @@ exit
 umount /mnt
 ```
 
-> Note: there is no need to shutdown the VM as we will simply detach the disk in Azure.
+> Note: There is no need to shutdown the VM as we will simply detach the disk in Azure.
 
 # Create Azure Image 
+
+Detach the disk where arch linux was installed.
+
+```
+<use the azure portal>
+```
 
 After detaching the disk generate a sas token so we can access it using azcopy; do this from the Azure Cloud Shell.
 
@@ -302,15 +301,15 @@ az disk grant-access -n <yourdiskname> -g <yourresourcegroupname> --access-level
 Use azcopy to copy the managed disk to a blob in storage; do this from the Azure Cloud Shell.
 
 ```
-AzCopy.exe copy "sas-URI-disk" "sas-URI-blob" --blob-type PageBlob
+azcopy copy "sas-URI-disk" "sas-URI-blob" --blob-type PageBlob
 ```
 
-> Note: get the sas token for the storage account container from the portal and don't forget to update it with the name of the blob you want to create.
+> Note: Get the sas token for the storage account container from the portal and don't forget to update it with the name of the blob you want to create.
 
 Done with the disk sas token.
 
 ```
-az disk revoke-access -n archlinux-new -g imageeng
+az disk revoke-access -n <yourdiskname> -g <yourresourcegroupname> 
 ```
 
 Create a new Image resource and select the blob we just copied as the source.
@@ -319,12 +318,25 @@ Create a new Image resource and select the blob we just copied as the source.
 <use the azure portal>
 ```
 
+# Test Image
+
 Create a new VM resource from the Image.
 
 ```
 <use the azure portal>
 ```
 
+Add custom data (cloud-init config) during VM creation to test cloud-init; example available in [src/custom-data](src/custom-data).
+
+> Note: It is a good idea to move the resource disk to the /mnt/resource mount-point.
+
 # Share Azure Image
 
 If the VM boots successfully create a new Image Definition in a Shared Image Gallery to replicated it to any other regions you want to deploy from.
+
+# Known issues
+
+1. cloud-init does not create swapfile
+
+https://bugs.launchpad.net/cloud-init/+bug/1869114
+
