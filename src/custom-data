@@ -1,7 +1,9 @@
 #cloud-config
+write_files:
+  - path: /etc/CLOUD_INIT_WAS_HERE
 mounts:
-    - ["ephemeral0.1", "/mnt/resource"]
+  - ["ephemeral0.1", "/mnt/resource"]
 swap:
-    filename: "/mnt/resource/swapfile"
-    size: "auto"
-    maxsize: 4294967296
+  filename: "/mnt/resource/swapfile"
+  size: "auto"
+  maxsize: 4294967296

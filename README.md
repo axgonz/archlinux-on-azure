@@ -82,7 +82,7 @@ Create a new VM resource (which we will now call the iso VM) from the Image.
 <use the azure portal>
 ```
 
-> Note: While creating the VM add an additional data disk which we will use to install arch onto.
+> Note: While creating the VM add an additional data disk which we will use to install arch onto (8GB minimum).
 
 ## Does it work?
 
@@ -114,7 +114,7 @@ The mirrors used are in [src/mirrorlist](src/mirrorlist). Your own list can be g
 Follow the official installation guide until the `pacstrap` command, then run the following instead.
 
 ```
-pacstrap /mnt base linux grub dhcpcd openssh sudo cloud-init cloud-guest-utils inetutils git base-devel nano
+pacstrap /mnt base linux grub openssh sudo cloud-init cloud-guest-utils gdisk inetutils git base-devel nano
 ```
 
 Description of packages.
@@ -124,16 +124,18 @@ Name | Usage
 base                | The base arch package from the installation guide.
 linux               | The linux kernel.
 grub                | A bootloader with good documentation for Azure.
-dhcpcd              | DHCP client required for obtaining interface configuration (and more) from Azure.
 sudo                | Azure expects that this will be installed.
-cloud-init          | Used to provision our VM.
-cloud-guest-utils   | Needed to use the growpart cloud-init module.
-inetutils           | Provides the hostname binary which cloud-init expects.
+cloud-init          | Cloud-init package.
+cloud-guest-utils   | Needed to use growpart.
+gdisk               | Needed to use growpart.
+inetutils           | Needed to use hostname.
 git                 | Used to source AUR packages (specifically walinuxagent).
 base-devel          | Used to build AUR packages (specifically walinuxagent).
 nano                | User friendly text editor. 
 
 > TODO: Raise bug for missing package dependency. The cloud-init package uses the 'hostname' binary which is not provided in any of its current dependencies. The 'inetutils' package provides the 'hostname' binary.
+
+> TODO: Raise bug for missing package dependency. The cloud-guest-utile package uses the 'sgdisk' binary which is not provided in any of its current dependencies. The 'gdisk' package provides the 'sgdisk' binary.
 
 ## Configure
 
@@ -179,6 +181,29 @@ nano /etc/sudoers
 
 ```
 %wheel ALL=(ALL) NOPASSWD: ALL
+```
+
+**network**
+
+Configure networking through systemd-networkd.
+
+```
+rm /usr/lib/systemd/network/* 
+```
+
+```
+cat << EOF > /etc/systemd/network/eth0.network
+[Match]
+Name=eth0
+
+[Network]
+DHCP=ipv4
+LinkLocalAddressing=no
+
+[DHCPv4]
+UseMTU=yes
+
+EOF
 ```
 
 **waagent**
@@ -233,6 +258,45 @@ nano /etc/waagent.conf
 
 ```
 Provisioning.Agent=cloud-init
+Provisioning.DeleteRootPassword=y
+Provisioning.DecodeCustomData=n
+Provisioning.ExecuteCustomData=n
+ResourceDisk.Format=n
+ResourceDisk.EnableSwap=n
+```
+
+**cloud-init**
+
+Disable cloud-init from applying networking (it's not reliable).
+
+```
+cat << EOF > /etc/cloud/cloud.cfg.d/20-disable-config-network.cfg
+network:
+  config: disabled
+
+EOF
+```
+
+Mount the resource disk in the right place (not directly on /mnt).
+
+```
+cat << EOF > /etc/cloud/cloud.cfg.d/30-resource-disk.cfg 
+mounts:
+  - [ ephemeral0, /mnt/resource ]
+
+EOF
+```
+
+Configure a swap file.
+
+```
+cat << EOF > /etc/cloud/cloud.cfg.d/40-enable-swap.cfg 
+swap:
+  filename: /mnt/resource/swapfile
+  size: "auto"
+  maxsize: 4294967296
+
+EOF
 ```
 
 **Check fstab**
@@ -259,7 +323,7 @@ We need to tell the kernel to output to serial and we need to tell grub to outpu
 To make sure the needed services are started at boot enable them with systemctl.
 
 ```
-systemctl enable dhcpcd sshd cloud-init waagent
+systemctl enable sshd cloud-init waagent systemd-networkd systemd-resolved
 ```
 
 ## Generalise
@@ -268,6 +332,8 @@ Generalise the installation before exiting chroot and un-mounting the disk.
 
 ```
 cloud-init clean
+rm /etc/netplan/*
+rm /run/systemd/network/* 
 ```
 
 ```
@@ -334,9 +400,39 @@ Add custom data (cloud-init config) during VM creation to test cloud-init; examp
 
 If the VM boots successfully create a new Image Definition in a Shared Image Gallery to replicated it to any other region you want to deploy from.
 
+# Make it stable
+
+Keep it simple!
+## Backups
+
+## Upgrades
+
 # Known issues
 
-1. Cloud-init does not create swapfile
+1. Cloud-init does not create swapfile.
 
 https://bugs.launchpad.net/cloud-init/+bug/1869114
 
+# Troubleshooting
+
+## Network
+
+Learn systemd-networkd and know where the different config paths are:
+
+dir | description
+---|---
+/run/systemd/network/     | volatile runtime network directory.
+/usr/lib/systemd/network/ | user network directory.
+/etc/systemd/network/     | local administration network directory (highest priority).
+
+Make sure the services are enabled.
+
+```
+systemctl enable systemd-networkd
+```
+
+```
+systemctl start systemd-resolved
+```
+
+> Note: Remember systemd-networkd has its own internal dhcp client.
